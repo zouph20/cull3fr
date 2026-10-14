@@ -46,7 +46,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "0.5"
+VERSION = "0.5.1"
 RAW_EXTS = (".3fr", ".fff")
 COMP_EXTS = (".heif", ".heic", ".hif", ".jpg", ".jpeg")  # 越靠前越优先用来预览
 APPROVAL = {"green": 0, "yellow": 1, "red": 2}           # Phocus .phos Approval
@@ -2187,20 +2187,126 @@ def install_app():
         "do shell script " + _as_str(cmd) + " & quoted form of f & " + _as_str(" >> " + shlex.quote(log) + " 2>&1 &"),
         "end run",
     ]
-    tmp_app = app + ".new"
-    if os.path.exists(tmp_app):
-        shutil.rmtree(tmp_app)
-    args = ["osacompile", "-o", tmp_app]
-    for ln in lines:
-        args += ["-e", ln]
-    r = subprocess.run(args, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(r.stderr.strip() or "osacompile 失败")
-    if os.path.exists(app):
-        shutil.rmtree(app)
-    os.rename(tmp_app, app)
-    subprocess.run(["open", "-R", app], capture_output=True)
+    tmpd = tempfile.mkdtemp(prefix=".cull3fr-app-", dir=os.path.dirname(app))
+    try:
+        # osacompile 按 -o 的扩展名决定生成什么：必须以 .app 结尾才是 App，否则是普通脚本文件
+        # （0.5 用的临时名 cull3fr.app.new 就因此生成了一个打不开的「App」）
+        tmp_app = os.path.join(tmpd, "cull3fr.app")
+        args = ["osacompile", "-o", tmp_app]
+        for ln in lines:
+            args += ["-e", ln]
+        r = subprocess.run(args, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip() or "osacompile 失败")
+        if not os.path.isfile(os.path.join(tmp_app, "Contents", "Info.plist")):
+            raise RuntimeError("osacompile 没有生成 App")
+        try:
+            _set_app_icon(tmp_app)
+        except Exception as e:
+            sys.stderr.write("设置图标失败（不影响使用）：%s\n" % e)
+        _run_quiet(["codesign", "--force", "--sign", "-", tmp_app])  # 改过资源后重新做本机签名
+        if os.path.isdir(app) and not os.path.islink(app):
+            shutil.rmtree(app)
+        elif os.path.lexists(app):
+            os.remove(app)  # 0.5 生成的坏 App 是一个普通文件
+        os.rename(tmp_app, app)
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+    os.utime(app, None)  # 让 Finder 重新读图标
+    _run_quiet([LSREGISTER, "-f", app])
+    _run_quiet(["open", "-R", app])
     return app
+
+
+LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+              "LaunchServices.framework/Support/lsregister")
+
+
+def _run_quiet(args):
+    try:
+        return subprocess.run(args, capture_output=True, timeout=60).returncode
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _set_app_icon(app):
+    res = os.path.join(app, "Contents", "Resources")
+    with open(os.path.join(res, "applet.icns"), "wb") as f:
+        f.write(icon_icns())
+    car = os.path.join(res, "Assets.car")
+    if os.path.exists(car):
+        os.remove(car)  # 新版 macOS 生成的 applet 带 Assets.car，里面的默认图标会盖过 applet.icns
+    p = os.path.join(app, "Contents", "Info.plist")
+    with open(p, "rb") as f:
+        info = plistlib.load(f)
+    info.pop("CFBundleIconName", None)
+    info["CFBundleIconFile"] = "applet"
+    with open(p, "wb") as f:
+        plistlib.dump(info, f)
+
+
+# ---------- App 图标：深色圆角方块 + 绿黄红三个圆点（按 1024 网格现场画，不带任何图片文件）
+
+ICON_BG = (17, 17, 17)
+ICON_DOTS = ((292, (0x34, 0xc7, 0x59)), (512, (0xff, 0xcc, 0x00)), (732, (0xff, 0x45, 0x3a)))
+ICNS_TYPES = ((b"icp4", 16), (b"icp5", 32), (b"ic11", 32), (b"ic12", 64), (b"ic07", 128),
+              (b"ic08", 256), (b"ic13", 256), (b"ic09", 512), (b"ic14", 512), (b"ic10", 1024))
+
+
+def icon_png(n):
+    import math
+    import zlib
+    s = n / 1024.0
+    c, h, r = 512 * s, 412 * s, 185 * s  # 方块中心、半边长、圆角半径
+    dr, dy = 75 * s, 512 * s             # 圆点半径、圆心 y
+    dots = [(x * s, col) for x, col in ICON_DOTS]
+    cache = {}
+
+    def pixel(a, k, t):
+        v = cache.get((a, k, t))
+        if v is None:
+            rgb = ICON_BG if k < 0 else tuple(round(b + (f - b) * t / 255) for b, f in zip(ICON_BG, dots[k][1]))
+            v = cache[(a, k, t)] = bytes(rgb + (a,))
+        return v
+
+    raw = bytearray()
+    for iy in range(n):
+        y = iy + 0.5
+        qy = abs(y - c) - (h - r)
+        ady = abs(y - dy)
+        line = []
+        for ix in range(n):
+            x = ix + 0.5
+            qx = abs(x - c) - (h - r)
+            d = math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - r  # 到圆角方块边缘的距离
+            a = 0 if d >= 0.5 else 255 if d <= -0.5 else round((0.5 - d) * 255)
+            if not a:
+                line.append(b"\0\0\0\0")
+                continue
+            k, t = -1, 0
+            if ady < dr + 0.5:
+                for j, (cx, _) in enumerate(dots):
+                    if abs(x - cx) < dr + 0.5:
+                        e = math.hypot(x - cx, y - dy) - dr
+                        if e < 0.5:
+                            k, t = j, 255 if e <= -0.5 else round((0.5 - e) * 255)
+                        break
+            line.append(pixel(a, k, t))
+        raw += b"\0" + b"".join(line)
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", n, n, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b""))
+
+
+def icon_icns():
+    pngs, body = {}, b""
+    for tag, n in ICNS_TYPES:
+        if n not in pngs:
+            pngs[n] = icon_png(n)
+        body += tag + struct.pack(">I", 8 + len(pngs[n])) + pngs[n]
+    return b"icns" + struct.pack(">I", 8 + len(body)) + body
 
 
 # ---------- 同一时间只运行一个（避免两个进程同时改同一份标记）

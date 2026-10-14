@@ -31,7 +31,7 @@ A lightweight culling tool for Hasselblad X2D II shoots. Rate and colour-label p
    python3 ~/cull3fr/cull3fr.py
    ```
    在弹出的窗口里选这次拍摄的文件夹，浏览器会自动打开。
-3. **以后不用终端**：在网页里点「? 快捷键」，再点「生成 cull3fr App」，或者运行 `python3 cull3fr.py --install-app`。会生成 `~/Applications/cull3fr.app`，之后用 Spotlight 搜「cull3fr」或从 Dock 双击打开。生成以后不要再移动 `cull3fr.py`。
+3. **以后不用终端**：在网页里点「? 快捷键」，再点「生成 cull3fr App」，或者运行 `python3 cull3fr.py --install-app`。会生成 `~/Applications/cull3fr.app`（深色方块加绿黄红三个点的图标），之后用 Spotlight 搜「cull3fr」或从 Dock 双击打开。App 里记的是 `cull3fr.py` 和当时所用 Python 的完整路径，生成以后不要再移动 `cull3fr.py`；换了 Python 要重新生成。第一次打开时 macOS 可能会问能否访问桌面或外接硬盘上的文件，点「允许」。
 4. 选片：键盘打星、打颜色。左下角 📁 可以换文件夹。
 5. 写入：点「全部写入」，弹窗里会先列出要改哪些照片、哪些写不进去，确认后写入。**写入前请退出 Phocus。**
 6. 回到 Phocus 打开这个文件夹，按星级或颜色筛选后导出。
@@ -89,7 +89,7 @@ A lightweight culling tool for Hasselblad X2D II shoots. Rate and colour-label p
 - **只有 HEIC 的照片、而且还没有 `.phos` 时**：Phocus 会在 HEIC 的 `.phos` 基线里存一个按这张图算出来的色温，工具算不出来，写的是 0。这个 0 在 Phocus 里是否等于「按原样显示」还没有确认，写完请在 Phocus 里看一眼颜色。已经有 `.phos` 的 HEIC 不受影响。
 - 新建 3FR `.phos` 用的是 Phocus「只打标、不调参数」时写出的基线设置，没有按镜头逐一核对。
 - 改写 `.phos` 时不保留 macOS 扩展属性（Finder 信息）。
-- 生成的启动器是本机的 AppleScript 小程序，没有签名。
+- 生成的启动器是本机的 AppleScript 小程序，只有本机签名（ad-hoc），没有 Apple 开发者签名。
 
 ## 文件放在哪里
 
@@ -116,6 +116,10 @@ python3 cull3fr.py --port 8765        # 指定端口（默认 8765，被占用�
 ## 卸载
 
 删除 `cull3fr.py`、`~/Applications/cull3fr.app`、`~/Library/Caches/cull3fr/`、`~/Library/Logs/cull3fr.log`。照片文件夹里的 `.cull3fr*` 可以留着也可以删，删掉不影响照片和 `.phos`。
+
+## 更新记录
+
+- **0.5.1**：修复「生成 cull3fr App」生成的 App 打不开（提示 not supported on this Mac）的问题，并加上图标。0.5 生成过 App 的，换成新的 `cull3fr.py` 后重新生成一次即可，旧的会被替换。
 
 ## 从 HB Cull 升级
 

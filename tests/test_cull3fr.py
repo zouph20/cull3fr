@@ -756,6 +756,72 @@ def single_instance_hands_over_folder():           # 评审 M1
             p1.kill()
 
 
+@test
+def install_app_makes_real_bundle_with_icon():
+    """osacompile 只有在 -o 以 .app 结尾时才生成 App；0.5 的临时名不是，生成的「App」打不开。"""
+    import subprocess as sp
+    import zlib
+    home = mkdir("fakehome")
+    apps = os.path.join(home, "Applications")
+    os.makedirs(apps)
+    put(os.path.join(apps, "cull3fr.app"), b"flat compiled script left by 0.5")
+    calls = []
+
+    def fake_run(args, **kw):
+        calls.append(list(args))
+        if args[0] == "osacompile":
+            out = args[args.index("-o") + 1]
+            if out.endswith(".app"):
+                os.makedirs(os.path.join(out, "Contents", "Resources"))
+                put(os.path.join(out, "Contents", "Info.plist"), plistlib.dumps(
+                    {"CFBundleExecutable": "applet", "CFBundleIconFile": "applet", "CFBundleIconName": "applet"},
+                    fmt=plistlib.FMT_BINARY))
+                put(os.path.join(out, "Contents", "Resources", "Assets.car"), b"car")
+                put(os.path.join(out, "Contents", "Resources", "applet.icns"), b"default")
+            else:
+                put(out, b"compiled script")  # 其他扩展名：真 osacompile 只生成脚本文件
+        return sp.CompletedProcess(args, 0, "", "")
+
+    saved = (sys.platform, hb.subprocess.run, os.environ.get("HOME"))
+    sys.platform, hb.subprocess.run, os.environ["HOME"] = "darwin", fake_run, home
+    try:
+        app = hb.install_app()
+    finally:
+        sys.platform, hb.subprocess.run = saved[0], saved[1]
+        if saved[2] is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = saved[2]
+    assert app == os.path.join(apps, "cull3fr.app") and os.path.isdir(app), app
+    assert os.listdir(apps) == ["cull3fr.app"], os.listdir(apps)  # 临时目录已清理
+    osa = next(c for c in calls if c[0] == "osacompile")
+    assert osa[osa.index("-o") + 1].endswith(".app"), osa
+    script = "\n".join(osa[i + 1] for i, a in enumerate(osa) if a == "-e")
+    assert "--launch" in script and os.path.abspath(SCRIPT) in script, script
+    info = plistlib.load(open(os.path.join(app, "Contents", "Info.plist"), "rb"))
+    assert "CFBundleIconName" not in info and info["CFBundleIconFile"] == "applet", info
+    assert not os.path.exists(os.path.join(app, "Contents", "Resources", "Assets.car"))
+    icns = read(os.path.join(app, "Contents", "Resources", "applet.icns"))
+    assert icns[:4] == b"icns" and struct.unpack(">I", icns[4:8])[0] == len(icns)
+    pos, seen = 8, {}
+    while pos < len(icns):
+        tag, ln = icns[pos:pos + 4], struct.unpack(">I", icns[pos + 4:pos + 8])[0]
+        png = icns[pos + 8:pos + ln]
+        assert png[:8] == b"\x89PNG\r\n\x1a\n", tag
+        seen[tag] = struct.unpack(">II", png[16:24])
+        if tag == b"ic12":  # 64×64：检查几个像素
+            raw = zlib.decompress(png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8])
+            px = lambda x, y: tuple(raw[y * 257 + 1 + 4 * x:y * 257 + 5 + 4 * x])
+            assert px(0, 0)[3] == 0, px(0, 0)                      # 方块外透明
+            assert px(32, 32) == (0xff, 0xcc, 0x00, 255), px(32, 32)  # 中间是黄点
+            assert px(18, 32) == (0x34, 0xc7, 0x59, 255), px(18, 32)  # 左边绿点
+            assert px(46, 32) == (0xff, 0x45, 0x3a, 255), px(46, 32)  # 右边红点
+            assert px(32, 12) == (17, 17, 17, 255), px(32, 12)     # 方块本身
+        pos += ln
+    assert seen == {t: (n, n) for t, n in hb.ICNS_TYPES}, seen
+    assert any(c[0] == "codesign" for c in calls), calls
+
+
 if __name__ == "__main__":
     only = sys.argv[1:]
     for name, fn in list(globals().items()):
