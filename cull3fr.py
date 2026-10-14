@@ -15,7 +15,7 @@ cull3fr：超轻量 Hasselblad 选片（1 到 5 星 + 红黄绿）
   python3 cull3fr.py                 # 弹窗选文件夹
   python3 cull3fr.py /path/to/shoot  # 直接打开
   python3 cull3fr.py /path --undo    # 撤销最近一次写入 / 移动（网页里也有撤销按钮）
-  python3 cull3fr.py --install-app   # 生成「cull3fr」App，以后双击打开
+  python3 cull3fr.py --install-app   # 生成「Cull3fr」App，以后双击打开
   python3 cull3fr.py /path --inspect # 只打印每张图读到的评分，不开界面
 
 只用 Python 标准库 + macOS 自带 sips。
@@ -1720,8 +1720,8 @@ details{margin-top:14px;color:#bbb}details p{font-size:12px;color:#999}
   </table>
   <p class="txt mut">每次打标都自动存到文件夹里的 .cull3fr.json，关掉再开会接着上次。照片文件只在「全部写入」时才改（只改 .phos，写前备份）。<br>「不一致」：同名 HEIF 和 RAW 的评分不同，已按 RAW 取值。</p>
   <h2 style="margin-top:18px">以后不用终端</h2>
-  <p class="txt mut">点下面的按钮会生成一个「cull3fr」App（放在你的「应用程序」文件夹里）。以后用 Spotlight 搜 cull3fr 或从 Dock 双击打开，选文件夹就开始；用完点右下角「退出」。cull3fr.py 生成后不要再挪位置。</p>
-  <div class="btns"><button id="inst">生成 cull3fr App</button></div>
+  <p class="txt mut">点下面的按钮会生成一个「Cull3fr」App（放在你的「应用程序」文件夹里）。以后用 Spotlight 搜 Cull3fr 或从 Dock 双击打开，选文件夹就开始；用完点右下角「退出」。cull3fr.py 生成后不要再挪位置。</p>
+  <div class="btns"><button id="inst">生成 Cull3fr App</button></div>
   <div id="instres" class="txt" style="margin-top:8px"></div>
   <div class="btns end"><button class="close">关闭</button></div>
 </div></div>
@@ -1741,7 +1741,7 @@ details{margin-top:14px;color:#bbb}details p{font-size:12px;color:#999}
 
 <div class="modal" id="bye"><div class="card">
   <h2>已退出</h2>
-  <p class="txt">可以关掉这个标签页了。下次从「cull3fr」App 打开（还没生成的话，打开后在「? 快捷键」里点「生成 cull3fr App」）。</p>
+  <p class="txt">可以关掉这个标签页了。下次从「Cull3fr」App 打开（还没生成的话，打开后在「? 快捷键」里点「生成 Cull3fr App」）。</p>
 </div></div>
 
 <script>
@@ -2118,7 +2118,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/install":
                 try:
                     app = install_app()
-                    return self._json({"ok": True, "text": "已生成：%s\n以后用 Spotlight 搜「cull3fr」打开，或者把它拖到 Dock。"
+                    return self._json({"ok": True, "text": "已生成：%s\n以后用 Spotlight 搜「Cull3fr」打开，或者把它拖到 Dock。"
                                                           "\ncull3fr.py 请留在 %s，不要挪。"
                                                           % (app, os.path.dirname(os.path.abspath(__file__)))})
                 except Exception as ex:
@@ -2146,7 +2146,7 @@ def pick_folder(start=None):
 
 def alert(msg):
     if sys.platform == "darwin":
-        subprocess.run(["osascript", "-e", "display alert " + _as_str("cull3fr") + " message " + _as_str(msg)],
+        subprocess.run(["osascript", "-e", "display alert " + _as_str("Cull3fr") + " message " + _as_str(msg)],
                        capture_output=True)
     sys.stderr.write(msg + "\n")
 
@@ -2168,10 +2168,10 @@ def open_folder(server, path=None):
 
 
 def install_app():
-    """生成 ~/Applications/cull3fr.app：双击 → 选文件夹 → 在后台启动本工具并打开浏览器。"""
+    """生成 ~/Applications/Cull3fr.app：双击 → 选文件夹 → 在后台启动本工具并打开浏览器。"""
     if sys.platform != "darwin":
         raise RuntimeError("只支持 macOS")
-    app = os.path.expanduser("~/Applications/cull3fr.app")
+    app = os.path.expanduser("~/Applications/%s.app" % APP_NAME)
     log = os.path.expanduser("~/Library/Logs/cull3fr.log")
     os.makedirs(os.path.dirname(app), exist_ok=True)
     os.makedirs(os.path.dirname(log), exist_ok=True)
@@ -2191,7 +2191,7 @@ def install_app():
     try:
         # osacompile 按 -o 的扩展名决定生成什么：必须以 .app 结尾才是 App，否则是普通脚本文件
         # （0.5 用的临时名 cull3fr.app.new 就因此生成了一个打不开的「App」）
-        tmp_app = os.path.join(tmpd, "cull3fr.app")
+        tmp_app = os.path.join(tmpd, APP_NAME + ".app")
         args = ["osacompile", "-o", tmp_app]
         for ln in lines:
             args += ["-e", ln]
@@ -2205,10 +2205,11 @@ def install_app():
         except Exception as e:
             sys.stderr.write("设置图标失败（不影响使用）：%s\n" % e)
         _run_quiet(["codesign", "--force", "--sign", "-", tmp_app])  # 改过资源后重新做本机签名
-        if os.path.isdir(app) and not os.path.islink(app):
-            shutil.rmtree(app)
-        elif os.path.lexists(app):
-            os.remove(app)  # 0.5 生成的坏 App 是一个普通文件
+        for old in (app, os.path.join(os.path.dirname(app), "cull3fr.app")):  # 0.5 生成的是小写名字
+            if os.path.isdir(old) and not os.path.islink(old):
+                shutil.rmtree(old)
+            elif os.path.lexists(old):
+                os.remove(old)  # 0.5 生成的坏 App 是一个普通文件
         os.rename(tmp_app, app)
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
@@ -2218,6 +2219,7 @@ def install_app():
     return app
 
 
+APP_NAME = "Cull3fr"
 LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
               "LaunchServices.framework/Support/lsregister")
 
@@ -2245,9 +2247,9 @@ def _set_app_icon(app):
         plistlib.dump(info, f)
 
 
-# ---------- App 图标：深色圆角方块 + 绿黄红三个圆点（按 1024 网格现场画，不带任何图片文件）
+# ---------- App 图标：灰绿色圆角方块 + 绿黄红三个圆点（按 1024 网格现场画，不带任何图片文件）
 
-ICON_BG = (17, 17, 17)
+ICON_BG = (0x90, 0xa6, 0x9c)
 ICON_DOTS = ((292, (0x34, 0xc7, 0x59)), (512, (0xff, 0xcc, 0x00)), (732, (0xff, 0x45, 0x3a)))
 ICNS_TYPES = ((b"icp4", 16), (b"icp5", 32), (b"ic11", 32), (b"ic12", 64), (b"ic07", 128),
               (b"ic08", 256), (b"ic13", 256), (b"ic09", 512), (b"ic14", 512), (b"ic10", 1024))
@@ -2384,7 +2386,7 @@ def main():
     ap.add_argument("--preview", type=int, default=3000, help="预览长边像素（没有内嵌预览时才用），默认 3000")
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--launch", action="store_true", help=argparse.SUPPRESS)  # 由 App 启动
-    ap.add_argument("--install-app", action="store_true", help="生成 ~/Applications/cull3fr.app")
+    ap.add_argument("--install-app", action="store_true", help="生成 ~/Applications/Cull3fr.app")
     a = ap.parse_args()
 
     if a.install_app:

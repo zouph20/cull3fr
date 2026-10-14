@@ -792,10 +792,10 @@ def install_app_makes_real_bundle_with_icon():
             os.environ.pop("HOME", None)
         else:
             os.environ["HOME"] = saved[2]
-    assert app == os.path.join(apps, "cull3fr.app") and os.path.isdir(app), app
-    assert os.listdir(apps) == ["cull3fr.app"], os.listdir(apps)  # 临时目录已清理
+    assert app == os.path.join(apps, "Cull3fr.app") and os.path.isdir(app), app
+    assert os.listdir(apps) == ["Cull3fr.app"], os.listdir(apps)  # 旧的小写 App 和临时目录都已清理
     osa = next(c for c in calls if c[0] == "osacompile")
-    assert osa[osa.index("-o") + 1].endswith(".app"), osa
+    assert osa[osa.index("-o") + 1].endswith("/Cull3fr.app"), osa
     script = "\n".join(osa[i + 1] for i, a in enumerate(osa) if a == "-e")
     assert "--launch" in script and os.path.abspath(SCRIPT) in script, script
     info = plistlib.load(open(os.path.join(app, "Contents", "Info.plist"), "rb"))
@@ -816,10 +816,17 @@ def install_app_makes_real_bundle_with_icon():
             assert px(32, 32) == (0xff, 0xcc, 0x00, 255), px(32, 32)  # 中间是黄点
             assert px(18, 32) == (0x34, 0xc7, 0x59, 255), px(18, 32)  # 左边绿点
             assert px(46, 32) == (0xff, 0x45, 0x3a, 255), px(46, 32)  # 右边红点
-            assert px(32, 12) == (17, 17, 17, 255), px(32, 12)     # 方块本身
+            assert px(32, 12) == hb.ICON_BG + (255,), px(32, 12)   # 方块本身
         pos += ln
     assert seen == {t: (n, n) for t, n in hb.ICNS_TYPES}, seen
     assert any(c[0] == "codesign" for c in calls), calls
+
+
+@test
+def readme_icon_matches_app_icon():
+    """README 里的 docs/icon.png 要和 App 图标出自同一段代码（改了图标记得重新生成这张图）。"""
+    p = os.path.join(os.path.dirname(os.path.abspath(SCRIPT)), "docs", "icon.png")
+    assert read(p) == hb.icon_png(256), "docs/icon.png 过期了：用 icon_png(256) 重新生成"
 
 
 if __name__ == "__main__":
